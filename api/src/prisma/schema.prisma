@@ -1,0 +1,263 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role { ADMIN MANAGER INSPECTOR CLIENT }
+enum UserStatus { ACTIVE LOCKED DISABLED }
+
+enum ClientCategory { MINE INDUSTRIAL CONSTRUCTION }
+enum ClientStatus { ACTIVE INACTIVE SUSPENDED }
+
+enum EquipmentType {
+  CRANE
+  MOBILE_CRANE
+  FORKLIFT
+  SERVICE_TRUCK_LIFTING_ATTACHMENTS
+  AIR_RECEIVER
+  COMPRESSOR
+  PRESSURE_VESSEL
+  SLINGS_CHAINS_SHACKLES
+  HYDRAULIC_JACK
+  MECHANICAL_JACK
+  SAFETY_HARNESS
+  CLAMPS_SHUTTER_CLAMPS
+  STEP_LADDERS
+}
+
+enum InspectionType {
+  THOROUGH_EXAMINATION
+  VISUAL_INSPECTION
+  LOAD_TEST
+  HYDROSTATIC_TEST
+  PRESSURE_TEST
+  UT_THICKNESS_TEST
+  FUNCTIONAL_TEST
+  ROPE_CHAIN_CONDITION_CHECK
+  SAFETY_COMPLIANCE_CHECK
+}
+
+enum InspectionStatus { DRAFT SUBMITTED APPROVED REJECTED }
+
+enum RiskLevel { LOW MEDIUM HIGH CRITICAL }
+enum PfmeaStatus { OPEN VERIFIED CLOSED }
+
+enum NcrCategory { MAJOR MINOR OBSERVATION }
+enum NcrStatus { OPEN IN_PROGRESS CLOSED }
+
+model User {
+  id               String     @id @default(cuid())
+  name             String
+  email            String     @unique
+  phone            String?
+  passwordHash     String
+  role             Role       @default(INSPECTOR)
+  status           UserStatus @default(ACTIVE)
+  failedLoginCount Int        @default(0)
+  lockUntil        DateTime?
+  lastLoginAt      DateTime?
+  lastLoginIp      String?
+
+  refreshTokens    RefreshToken[]
+  auditLogs        AuditLog[]
+
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String?
+  entityId   String?
+  ip         String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+}
+
+model Client {
+  id        String         @id @default(cuid())
+  name      String
+  category  ClientCategory
+  status    ClientStatus   @default(ACTIVE)
+  notes     String?
+
+  sites     ClientSite[]
+  contacts  ClientContact[]
+  equipment Equipment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ClientSite {
+  id           String  @id @default(cuid())
+  clientId     String
+  name         String
+  locationText String?
+  gpsLat       Float?
+  gpsLng       Float?
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+}
+
+model ClientContact {
+  id       String  @id @default(cuid())
+  clientId String
+  fullName String
+  position String?
+  email    String?
+  phone    String?
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+}
+
+model Equipment {
+  id                String        @id @default(cuid())
+  clientId          String
+  siteId            String?
+  equipmentCode     String        @unique
+  type              EquipmentType
+  serialNumber      String
+  manufacturer      String?
+  yearOfManufacture Int?
+  countryOfOrigin   String?
+
+  swl              Float?
+  mawp             Float?
+  designPressure   Float?
+  testPressure     Float?
+
+  status           String   @default("ACTIVE")
+  intervalDays     Int?
+  nextDueDate      DateTime?
+  lastInspectedAt  DateTime?
+
+  client           Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  inspections      Inspection[]
+  qr               EquipmentQr?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([clientId, serialNumber])
+  @@index([clientId, type])
+}
+
+model EquipmentQr {
+  id          String   @id @default(cuid())
+  equipmentId String   @unique
+  publicCode  String   @unique
+  createdAt   DateTime @default(now())
+
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+}
+
+model Inspection {
+  id                   String           @id @default(cuid())
+  inspectionCode       String           @unique
+  equipmentId          String
+  clientId             String
+  siteId               String?
+  inspectorId          String
+  managerApproverId    String?
+
+  type                 InspectionType
+  datePerformed        DateTime
+  findingsText         String?
+  nonConformance       Boolean          @default(false)
+  certificateIssued    Boolean          @default(false)
+  certificateExpiryDate DateTime?
+  status               InspectionStatus @default(DRAFT)
+
+  pfmeaItems           PfmeaItem[]
+  ncrs                 Ncr[]
+
+  equipment            Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  client               Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([clientId, datePerformed])
+  @@index([equipmentId, datePerformed])
+}
+
+model PfmeaItem {
+  id               String     @id @default(cuid())
+  inspectionId     String
+  equipmentId      String
+  clientId         String
+
+  failureMode      String
+  failureCause     String
+  failureEffect    String
+  existingControls String?
+
+  severity         Int
+  occurrence       Int
+  detection        Int
+  rpn              Int
+  riskLevel        RiskLevel
+  actionOwnerUserId String?
+  actionDueDate    DateTime?
+  verificationNotes String?
+  status           PfmeaStatus @default(OPEN)
+
+  inspection Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([inspectionId])
+  @@index([clientId, riskLevel])
+}
+
+model Ncr {
+  id            String      @id @default(cuid())
+  ncrCode       String      @unique
+  clientId      String
+  equipmentId   String
+  inspectionId  String?
+  category      NcrCategory
+  description   String
+  assignedToUserId String?
+  dueDate       DateTime?
+  status        NcrStatus   @default(OPEN)
+  closedAt      DateTime?
+
+  inspection Inspection? @relation(fields: [inspectionId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId, status])
+}
