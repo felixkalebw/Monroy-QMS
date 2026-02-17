@@ -1,3 +1,7 @@
+import usersRoutes from "./routes/users.routes.js";
+import dashboardRoutes from "./routes/dashboard.routes.js";
+import auditRoutes from "./routes/audit.routes.js";
+
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
