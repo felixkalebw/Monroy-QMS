@@ -1,142 +1,65 @@
-import { Router } from "express";
-import { PrismaClient } from "@prisma/client";
+import express from "express";
 import bcrypt from "bcryptjs";
-import { requireAuth } from "../middleware/auth.js";
-import { requireRole } from "../middleware/rbac.js";
-import { audit } from "../middleware/audit.js";
+import { z } from "zod";
+import { prisma } from "../prisma.js";
+import { requireAuth, requireRole } from "../middleware/auth.js";
 
-const prisma = new PrismaClient();
-const router = Router();
+const router = express.Router();
 
-/**
- * GET /api/users
- * Admin only
- */
-router.get("/", requireAuth, requireRole("ADMIN"), async (req, res, next) => {
-  try {
-    const rows = await prisma.user.findMany({
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone: true,
-        role: true,
-        status: true,
-        clientId: true,
-        failedLoginCount: true,
-        lockUntil: true,
-        lastLoginAt: true,
-        lastLoginIp: true,
-        createdAt: true
-      },
-      orderBy: { createdAt: "desc" },
-      take: 300
-    });
-    res.json(rows);
-  } catch (e) {
-    next(e);
-  }
+router.get("/", requireAuth, requireRole("ADMIN"), async (req, res) => {
+  const users = await prisma.user.findMany({
+    orderBy: { createdAt: "desc" },
+    select: { id: true, name: true, email: true, role: true, status: true, clientId: true, createdAt: true }
+  });
+  res.json(users);
 });
 
-/**
- * POST /api/users
- * Create user (Admin only)
- * Body:
- *  { name, email, phone?, role, password, clientId? }
- *
- * For CLIENT role, you should pass clientId
- */
-router.post("/", requireAuth, requireRole("ADMIN"), audit("CREATE_USER", "USER"), async (req, res, next) => {
-  try {
-    const d = req.body ?? {};
-    if (!d.name || !d.email || !d.password || !d.role) {
-      return res.status(400).json({ error: "name, email, password, role are required" });
-    }
+router.post("/", requireAuth, requireRole("ADMIN"), async (req, res) => {
+  const Schema = z.object({
+    name: z.string().min(2),
+    email: z.string().email(),
+    password: z.string().min(6),
+    role: z.enum(["ADMIN", "MANAGER", "INSPECTOR", "CLIENT"]),
+    clientId: z.string().optional().nullable()
+  });
 
-    if (d.role === "CLIENT" && !d.clientId) {
-      return res.status(400).json({ error: "clientId is required for CLIENT role" });
-    }
+  const parsed = Schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
 
-    const passwordHash = await bcrypt.hash(d.password, 12);
+  const exists = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+  if (exists) return res.status(409).json({ error: "Email already exists" });
 
-    const row = await prisma.user.create({
-      data: {
-        name: d.name,
-        email: d.email,
-        phone: d.phone ?? null,
-        role: d.role,
-        passwordHash,
-        clientId: d.clientId ?? null
-      },
-      select: { id: true, name: true, email: true, role: true, status: true, clientId: true, createdAt: true }
-    });
+  const passwordHash = await bcrypt.hash(parsed.data.password, 10);
 
-    res.status(201).json(row);
-  } catch (e) {
-    if (String(e?.message ?? "").includes("Unique constraint")) {
-      return res.status(409).json({ error: "Email already exists" });
-    }
-    next(e);
-  }
+  const user = await prisma.user.create({
+    data: {
+      name: parsed.data.name,
+      email: parsed.data.email,
+      passwordHash,
+      role: parsed.data.role,
+      clientId: parsed.data.role === "CLIENT" ? (parsed.data.clientId || null) : null,
+      status: "ACTIVE"
+    },
+    select: { id: true, name: true, email: true, role: true, status: true, clientId: true }
+  });
+
+  await prisma.auditLog.create({ data: { userId: req.user.sub, action: "USER_CREATE", entityType: "User", entityId: user.id, ip: req.ip } });
+  res.json(user);
 });
 
-/**
- * PATCH /api/users/:id
- * Admin only
- * Update role, status, clientId, phone, name
- */
-router.patch("/:id", requireAuth, requireRole("ADMIN"), audit("UPDATE_USER", "USER"), async (req, res, next) => {
-  try {
-    const d = req.body ?? {};
+router.patch("/:id", requireAuth, requireRole("ADMIN"), async (req, res) => {
+  const Schema = z.object({ status: z.enum(["ACTIVE", "LOCKED", "DISABLED"]) });
+  const parsed = Schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
 
-    if (d.role === "CLIENT" && d.clientId === undefined) {
-      // allow leaving as-is, but if they set role to CLIENT they should provide clientId
-      const existing = await prisma.user.findUnique({ where: { id: req.params.id } });
-      if (existing && existing.role !== "CLIENT" && !d.clientId) {
-        return res.status(400).json({ error: "clientId required when changing role to CLIENT" });
-      }
-    }
+  const updated = await prisma.user.update({
+    where: { id: req.params.id },
+    data: { status: parsed.data.status },
+    select: { id: true, name: true, email: true, role: true, status: true, clientId: true }
+  });
 
-    const row = await prisma.user.update({
-      where: { id: req.params.id },
-      data: {
-        name: d.name ?? undefined,
-        phone: d.phone ?? undefined,
-        role: d.role ?? undefined,
-        status: d.status ?? undefined,
-        clientId: d.clientId ?? undefined,
-        lockUntil: d.status === "LOCKED" ? (d.lockUntil ? new Date(d.lockUntil) : new Date(Date.now() + 30 * 60 * 1000)) : undefined
-      },
-      select: { id: true, name: true, email: true, role: true, status: true, clientId: true, lockUntil: true }
-    });
-
-    res.json(row);
-  } catch (e) {
-    next(e);
-  }
-});
-
-/**
- * POST /api/users/:id/reset-password
- * Admin only
- */
-router.post("/:id/reset-password", requireAuth, requireRole("ADMIN"), audit("RESET_PASSWORD", "USER"), async (req, res, next) => {
-  try {
-    const { newPassword } = req.body ?? {};
-    if (!newPassword || String(newPassword).length < 8) {
-      return res.status(400).json({ error: "newPassword must be at least 8 characters" });
-    }
-
-    const passwordHash = await bcrypt.hash(newPassword, 12);
-    await prisma.user.update({
-      where: { id: req.params.id },
-      data: { passwordHash, failedLoginCount: 0, status: "ACTIVE", lockUntil: null }
-    });
-
-    res.json({ ok: true });
-  } catch (e) {
-    next(e);
-  }
+  await prisma.auditLog.create({ data: { userId: req.user.sub, action: "USER_STATUS_UPDATE", entityType: "User", entityId: updated.id, ip: req.ip } });
+  res.json(updated);
 });
 
 export default router;
