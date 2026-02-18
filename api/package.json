@@ -3,11 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "node src/server.js",
     "start": "node src/server.js",
-    "start:prod": "npx prisma db push --schema=./prisma/schema.prisma && node src/server.js",
-    "prisma:generate": "prisma generate --schema=./prisma/schema.prisma"
+    "start:prod": "node src/server.js",
+    "prisma:generate": "prisma generate --schema=./prisma/schema.prisma",
+    "db:push": "prisma db push --schema=./prisma/schema.prisma"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
