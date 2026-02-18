@@ -1,70 +1,62 @@
 import express from "express";
 import helmet from "helmet";
 import morgan from "morgan";
-import { config } from "./config.js";
-import { corsMw } from "./middleware/cors.js";
-import { prisma } from "./prisma.js";
+import dotenv from "dotenv";
+import { PrismaClient } from "@prisma/client";
+import cors from "cors";
 
-import authRoutes from "./routes/auth.routes.js";
-import usersRoutes from "./routes/users.routes.js";
-import clientsRoutes from "./routes/clients.routes.js";
-import equipmentRoutes from "./routes/equipment.routes.js";
-import inspectionsRoutes from "./routes/inspections.routes.js";
-import ncrRoutes from "./routes/ncr.routes.js";
-import dashboardRoutes from "./routes/dashboard.routes.js";
-import auditRoutes from "./routes/audit.routes.js";
-import publicRoutes from "./routes/public.routes.js";
+dotenv.config();
 
 const app = express();
+const prisma = new PrismaClient();
 
+const PORT = Number(process.env.PORT || 4000);
+const NODE_ENV = process.env.NODE_ENV || "production";
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
+
+// middleware
 app.use(helmet());
-app.use(corsMw);
+app.use(cors({ origin: CORS_ORIGIN === "*" ? true : CORS_ORIGIN.split(",").map(s => s.trim()) }));
 app.use(express.json({ limit: "10mb" }));
 app.use(morgan("combined"));
 
-app.get("/health", (req, res) => res.json({ ok: true }));
+// ✅ Always-on health (does NOT require DB)
+app.get("/health", (req, res) => res.json({ ok: true, env: NODE_ENV }));
 
-app.use("/api/auth", authRoutes);
-app.use("/api/users", usersRoutes);
-app.use("/api/clients", clientsRoutes);
-app.use("/api/equipment", equipmentRoutes);
-app.use("/api/inspections", inspectionsRoutes);
-app.use("/api/ncrs", ncrRoutes);
-app.use("/api/dashboard", dashboardRoutes);
-app.use("/api/audit-logs", auditRoutes);
+// ✅ DB health (optional)
+app.get("/health/db", async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ ok: true, db: "up" });
+  } catch (e) {
+    res.status(503).json({ ok: false, db: "down", error: String(e?.message || e) });
+  }
+});
 
-app.use("/public", publicRoutes);
+// ---- your routes here (later) ----
+// app.use("/api/auth", authRoutes) ...
 
-// basic error handler
+// error handler
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(500).json({ error: "Server error", detail: config.nodeEnv === "development" ? String(err) : undefined });
+  res.status(500).json({ error: "Server error" });
 });
 
-const port = config.port;
-
-async function ensureAdminSeed() {
-  // If no users exist, create default admin (only first boot)
-  const count = await prisma.user.count();
-  if (count > 0) return;
-
-  const bcrypt = (await import("bcryptjs")).default;
-  const passwordHash = await bcrypt.hash("Admin@12345", 10);
-
-  await prisma.user.create({
-    data: {
-      name: "Admin",
-      email: "admin@monroy.local",
-      passwordHash,
-      role: "ADMIN",
-      status: "ACTIVE"
-    }
-  });
-
-  console.log("✅ Seeded default admin: admin@monroy.local / Admin@12345");
-}
-
-app.listen(port, async () => {
-  console.log(`API listening on :${port}`);
-  await ensureAdminSeed();
+// ✅ IMPORTANT: Listen first so Render sees an open port
+app.listen(PORT, () => {
+  console.log(`✅ Server listening on port ${PORT}`);
 });
+
+// Connect to DB in background (won’t stop port binding)
+(async () => {
+  try {
+    await prisma.$connect();
+    console.log("✅ Database connected");
+  } catch (e) {
+    console.error("⚠️ Database connection failed (server still running):", e?.message || e);
+  }
+})();
+
+// crash visibility
+process.on("unhandledRejection", (err) => console.error("UNHANDLED REJECTION:", err));
+process.on("uncaughtException", (err) => console.error("UNCAUGHT EXCEPTION:", err));
