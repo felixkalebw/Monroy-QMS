@@ -1,3 +1,4 @@
+"start:prod": "npx prisma migrate deploy --schema=./src/prisma/schema.prisma && node src/server.js"
 generator client {
   provider = "prisma-client-js"
 }
