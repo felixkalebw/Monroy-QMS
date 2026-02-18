@@ -1,33 +1,21 @@
-import { Router } from "express";
-import { PrismaClient } from "@prisma/client";
-import { requireAuth } from "../middleware/auth.js";
-import { requireRole } from "../middleware/rbac.js";
+import express from "express";
+import { prisma } from "../prisma.js";
+import { requireAuth, requireRole } from "../middleware/auth.js";
 
-const prisma = new PrismaClient();
-const router = Router();
+const router = express.Router();
 
-/**
- * GET /api/audit-logs?page=1&pageSize=50
- */
-router.get("/", requireAuth, requireRole("ADMIN"), async (req, res, next) => {
-  try {
-    const page = Math.max(1, Number(req.query.page ?? 1));
-    const pageSize = Math.max(1, Math.min(100, Number(req.query.pageSize ?? 50)));
-    const skip = (page - 1) * pageSize;
+router.get("/", requireAuth, requireRole("ADMIN"), async (req, res) => {
+  const page = Math.max(1, Number(req.query.page || 1));
+  const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize || 30)));
 
-    const [total, rows] = await Promise.all([
-      prisma.auditLog.count(),
-      prisma.auditLog.findMany({
-        orderBy: { createdAt: "desc" },
-        skip,
-        take: pageSize
-      })
-    ]);
+  const total = await prisma.auditLog.count();
+  const items = await prisma.auditLog.findMany({
+    orderBy: { createdAt: "desc" },
+    skip: (page - 1) * pageSize,
+    take: pageSize
+  });
 
-    res.json({ page, pageSize, total, totalPages: Math.ceil(total / pageSize), items: rows });
-  } catch (e) {
-    next(e);
-  }
+  res.json({ page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)), items });
 });
 
 export default router;
