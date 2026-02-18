@@ -3,9 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ======================
@@ -124,9 +123,6 @@ model User {
   pfmeaAssigned    PfmeaItem[]  @relation("PfmeaOwner")
   ncrAssigned      Ncr[]        @relation("NcrOwner")
 
-  refreshTokens    RefreshToken[]
-  auditLogs        AuditLog[]
-
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
@@ -206,14 +202,11 @@ model Equipment {
   designPressure    Float?
   testPressure      Float?
 
-  // NOTE: you can later convert this to an enum EquipmentStatus
   status            String        @default("ACTIVE")
-
   intervalDays      Int?
   nextDueDate       DateTime?
   lastInspectedAt   DateTime?
 
-  qr                EquipmentQr?
   inspections       Inspection[]
   pfmeaItems        PfmeaItem[]
   ncrs              Ncr[]
@@ -224,15 +217,6 @@ model Equipment {
   @@unique([clientId, serialNumber])
   @@index([clientId, type])
   @@index([nextDueDate])
-}
-
-model EquipmentQr {
-  id          String    @id @default(cuid())
-  equipmentId String    @unique
-  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-
-  publicCode  String    @unique
-  createdAt   DateTime  @default(now())
 }
 
 // ======================
@@ -350,38 +334,4 @@ model Ncr {
 
   @@index([clientId, status])
   @@index([dueDate])
-}
-
-// ======================
-// SECURITY + AUDIT
-// ======================
-
-model RefreshToken {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  tokenHash String
-  expiresAt DateTime
-  revokedAt DateTime?
-  createdAt DateTime @default(now())
-
-  @@index([userId])
-}
-
-model AuditLog {
-  id        String   @id @default(cuid())
-  userId    String?
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-
-  action    String
-  entityType String?
-  entityId  String?
-  ip        String?
-  userAgent String?
-  metadata  Json?
-
-  createdAt DateTime @default(now())
-
-  @@index([entityType, entityId])
 }
