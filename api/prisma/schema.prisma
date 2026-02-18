@@ -8,9 +8,9 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-/* =========================================================
-   ENUMS
-========================================================= */
+// ======================
+// ENUMS
+// ======================
 
 enum Role {
   ADMIN
@@ -97,50 +97,51 @@ enum NcrStatus {
   CLOSED
 }
 
-/* =========================================================
-   USERS
-========================================================= */
+// ======================
+// USERS
+// ======================
 
 model User {
-  id                String      @id @default(cuid())
-  name              String
-  email             String      @unique
-  phone             String?
-  passwordHash      String
-  role              Role        @default(INSPECTOR)
-  status            UserStatus  @default(ACTIVE)
-  failedLoginCount  Int         @default(0)
-  lockUntil         DateTime?
-  lastLoginAt       DateTime?
-  lastLoginIp       String?
+  id               String     @id @default(cuid())
+  name             String
+  email            String     @unique
+  phone            String?
+  passwordHash     String
+  role             Role       @default(INSPECTOR)
+  status           UserStatus @default(ACTIVE)
 
-  clientId          String?
-  client            Client?     @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  failedLoginCount Int        @default(0)
+  lockUntil        DateTime?
+  lastLoginAt      DateTime?
+  lastLoginIp      String?
 
-  inspections       Inspection[] @relation("InspectorInspections")
-  approvals         Inspection[] @relation("ManagerApprovals")
+  clientId         String?
+  client           Client?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
-  pfmeaAssigned     PfmeaItem[]  @relation("PfmeaOwner")
-  ncrAssigned       Ncr[]        @relation("NcrOwner")
+  inspections      Inspection[] @relation("InspectorInspections")
+  approvals        Inspection[] @relation("ManagerApprovals")
 
-  refreshTokens     RefreshToken[]
-  auditLogs         AuditLog[]
+  pfmeaAssigned    PfmeaItem[]  @relation("PfmeaOwner")
+  ncrAssigned      Ncr[]        @relation("NcrOwner")
 
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  refreshTokens    RefreshToken[]
+  auditLogs        AuditLog[]
+
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 
   @@index([clientId])
 }
 
-/* =========================================================
-   CLIENTS
-========================================================= */
+// ======================
+// CLIENTS
+// ======================
 
 model Client {
-  id          String          @id @default(cuid())
+  id          String         @id @default(cuid())
   name        String
   category    ClientCategory
-  status      ClientStatus    @default(ACTIVE)
+  status      ClientStatus   @default(ACTIVE)
   notes       String?
 
   sites       ClientSite[]
@@ -151,72 +152,74 @@ model Client {
   ncrs        Ncr[]
   users       User[]
 
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 }
 
 model ClientSite {
-  id            String   @id @default(cuid())
-  clientId      String
-  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  clientId     String
+  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  name          String
-  locationText  String?
-  gpsLat        Float?
-  gpsLng        Float?
+  name         String
+  locationText String?
+  gpsLat       Float?
+  gpsLng       Float?
 
-  inspections   Inspection[]
-  equipment     Equipment[]
+  inspections  Inspection[]
+  equipment    Equipment[]
 }
 
 model ClientContact {
-  id        String   @id @default(cuid())
-  clientId  String
-  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  fullName  String
-  position  String?
-  email     String?
-  phone     String?
+  fullName String
+  position String?
+  email    String?
+  phone    String?
 }
 
-/* =========================================================
-   EQUIPMENT
-========================================================= */
+// ======================
+// EQUIPMENT
+// ======================
 
 model Equipment {
-  id                 String        @id @default(cuid())
-  clientId           String
-  client             Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id                String        @id @default(cuid())
+  clientId          String
+  client            Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  siteId             String?
-  site               ClientSite?   @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  siteId            String?
+  site              ClientSite?   @relation(fields: [siteId], references: [id], onDelete: SetNull)
 
-  equipmentCode      String        @unique
-  type               EquipmentType
-  serialNumber       String
+  equipmentCode     String        @unique
+  type              EquipmentType
+  serialNumber      String
 
-  manufacturer       String?
-  yearOfManufacture  Int?
-  countryOfOrigin    String?
+  manufacturer      String?
+  yearOfManufacture Int?
+  countryOfOrigin   String?
 
-  swl                Float?
-  mawp               Float?
-  designPressure     Float?
-  testPressure       Float?
+  swl               Float?
+  mawp              Float?
+  designPressure    Float?
+  testPressure      Float?
 
-  status             String        @default("ACTIVE")
-  intervalDays       Int?
-  nextDueDate        DateTime?
-  lastInspectedAt    DateTime?
+  // NOTE: you can later convert this to an enum EquipmentStatus
+  status            String        @default("ACTIVE")
 
-  qr                 EquipmentQr?
-  inspections        Inspection[]
-  pfmeaItems         PfmeaItem[]
-  ncrs               Ncr[]
+  intervalDays      Int?
+  nextDueDate       DateTime?
+  lastInspectedAt   DateTime?
 
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  qr                EquipmentQr?
+  inspections       Inspection[]
+  pfmeaItems        PfmeaItem[]
+  ncrs              Ncr[]
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   @@unique([clientId, serialNumber])
   @@index([clientId, type])
@@ -224,161 +227,161 @@ model Equipment {
 }
 
 model EquipmentQr {
-  id           String    @id @default(cuid())
-  equipmentId  String    @unique
-  equipment    Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  id          String    @id @default(cuid())
+  equipmentId String    @unique
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
 
-  publicCode   String    @unique
-  createdAt    DateTime  @default(now())
+  publicCode  String    @unique
+  createdAt   DateTime  @default(now())
 }
 
-/* =========================================================
-   INSPECTIONS
-========================================================= */
+// ======================
+// INSPECTIONS
+// ======================
 
 model Inspection {
-  id                     String           @id @default(cuid())
-  inspectionCode         String           @unique
+  id                    String           @id @default(cuid())
+  inspectionCode        String           @unique
 
-  equipmentId            String
-  equipment              Equipment        @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  equipmentId           String
+  equipment             Equipment        @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
 
-  clientId               String
-  client                 Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId              String
+  client                Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  siteId                 String?
-  site                   ClientSite?      @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  siteId                String?
+  site                  ClientSite?      @relation(fields: [siteId], references: [id], onDelete: SetNull)
 
-  inspectorId            String
-  inspector              User             @relation("InspectorInspections", fields: [inspectorId], references: [id])
+  inspectorId           String
+  inspector             User             @relation("InspectorInspections", fields: [inspectorId], references: [id])
 
-  managerApproverId      String?
-  managerApprover        User?            @relation("ManagerApprovals", fields: [managerApproverId], references: [id])
+  managerApproverId     String?
+  managerApprover       User?            @relation("ManagerApprovals", fields: [managerApproverId], references: [id])
 
-  type                   InspectionType
-  datePerformed          DateTime
+  type                  InspectionType
+  datePerformed         DateTime
 
-  findingsText           String?
-  nonConformance         Boolean          @default(false)
-  certificateIssued      Boolean          @default(false)
-  certificateExpiryDate  DateTime?
-  status                 InspectionStatus @default(DRAFT)
+  findingsText          String?
+  nonConformance        Boolean          @default(false)
+  certificateIssued     Boolean          @default(false)
+  certificateExpiryDate DateTime?
+  status                InspectionStatus @default(DRAFT)
 
-  pfmeaItems             PfmeaItem[]
-  ncrs                   Ncr[]
+  pfmeaItems            PfmeaItem[]
+  ncrs                  Ncr[]
 
-  createdAt              DateTime         @default(now())
-  updatedAt              DateTime         @updatedAt
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
 
   @@index([clientId, datePerformed])
   @@index([equipmentId, datePerformed])
 }
 
-/* =========================================================
-   PFMEA
-========================================================= */
+// ======================
+// PFMEA
+// ======================
 
 model PfmeaItem {
-  id                 String       @id @default(cuid())
+  id                String      @id @default(cuid())
 
-  inspectionId       String
-  inspection         Inspection   @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  inspectionId      String
+  inspection        Inspection  @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
 
-  equipmentId        String
-  equipment          Equipment    @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  equipmentId       String
+  equipment         Equipment   @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
 
-  clientId           String
-  client             Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId          String
+  client            Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  failureMode        String
-  failureCause       String
-  failureEffect      String
-  existingControls   String?
+  failureMode       String
+  failureCause      String
+  failureEffect     String
+  existingControls  String?
 
-  severity           Int
-  occurrence         Int
-  detection          Int
+  severity          Int
+  occurrence        Int
+  detection         Int
 
-  rpn                Int
-  riskLevel          RiskLevel
+  rpn               Int
+  riskLevel         RiskLevel
 
-  actionOwnerUserId  String?
-  actionOwner        User?        @relation("PfmeaOwner", fields: [actionOwnerUserId], references: [id], onDelete: SetNull)
+  actionOwnerUserId String?
+  actionOwner       User?       @relation("PfmeaOwner", fields: [actionOwnerUserId], references: [id], onDelete: SetNull)
 
-  actionDueDate      DateTime?
-  verificationNotes  String?
-  status             PfmeaStatus  @default(OPEN)
+  actionDueDate     DateTime?
+  verificationNotes String?
+  status            PfmeaStatus @default(OPEN)
 
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
   @@index([clientId, riskLevel])
 }
 
-/* =========================================================
-   NCR
-========================================================= */
+// ======================
+// NCR
+// ======================
 
 model Ncr {
-  id                  String      @id @default(cuid())
-  ncrCode             String      @unique
+  id               String      @id @default(cuid())
+  ncrCode          String      @unique
 
-  clientId            String
-  client              Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId         String
+  client           Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  equipmentId         String
-  equipment           Equipment   @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  equipmentId      String
+  equipment        Equipment   @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
 
-  inspectionId        String?
-  inspection          Inspection? @relation(fields: [inspectionId], references: [id], onDelete: SetNull)
+  inspectionId     String?
+  inspection       Inspection? @relation(fields: [inspectionId], references: [id], onDelete: SetNull)
 
-  category            NcrCategory
-  description         String
+  category         NcrCategory
+  description      String
 
-  assignedToUserId    String?
-  assignedTo          User?       @relation("NcrOwner", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  assignedToUserId String?
+  assignedTo       User?       @relation("NcrOwner", fields: [assignedToUserId], references: [id], onDelete: SetNull)
 
-  dueDate             DateTime?
-  status              NcrStatus   @default(OPEN)
-  closedAt            DateTime?
+  dueDate          DateTime?
+  status           NcrStatus   @default(OPEN)
+  closedAt         DateTime?
 
-  createdAt           DateTime    @default(now())
-  updatedAt           DateTime    @updatedAt
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
   @@index([clientId, status])
   @@index([dueDate])
 }
 
-/* =========================================================
-   SECURITY + AUDIT
-========================================================= */
+// ======================
+// SECURITY + AUDIT
+// ======================
 
 model RefreshToken {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  tokenHash  String
-  expiresAt  DateTime
-  revokedAt  DateTime?
-  createdAt  DateTime @default(now())
+  tokenHash String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
 
   @@index([userId])
 }
 
 model AuditLog {
-  id         String   @id @default(cuid())
-  userId     String?
-  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  action     String
+  action    String
   entityType String?
-  entityId   String?
-  ip         String?
-  userAgent  String?
-  metadata   Json?
+  entityId  String?
+  ip        String?
+  userAgent String?
+  metadata  Json?
 
-  createdAt  DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([entityType, entityId])
 }
