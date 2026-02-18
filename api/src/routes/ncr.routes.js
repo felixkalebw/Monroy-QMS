@@ -1,58 +1,68 @@
-import { Router } from "express";
-import { PrismaClient } from "@prisma/client";
-import { requireAuth } from "../middleware/auth.js";
-import { requireRole } from "../middleware/rbac.js";
-import { audit } from "../middleware/audit.js";
+import express from "express";
+import { z } from "zod";
+import { prisma } from "../prisma.js";
+import { requireAuth, requireRole } from "../middleware/auth.js";
+import { makeNcrCode } from "../utils/codes.js";
 
-const prisma = new PrismaClient();
-const router = Router();
+const router = express.Router();
 
-router.get("/ncrs", requireAuth, async (req, res, next) => {
-  try {
-    const rows = await prisma.ncr.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 200
-    });
-    res.json(rows);
-  } catch (e) { next(e); }
+router.get("/", requireAuth, async (req, res) => {
+  const where = {};
+  if (req.user.role === "CLIENT" && req.user.clientId) where.clientId = req.user.clientId;
+
+  const rows = await prisma.ncr.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: 200
+  });
+  res.json(rows);
 });
 
-router.post("/ncrs", requireAuth, requireRole("ADMIN", "MANAGER", "INSPECTOR"), audit("CREATE_NCR", "NCR"), async (req, res, next) => {
-  try {
-    const d = req.body ?? {};
+router.post("/", requireAuth, requireRole("ADMIN", "MANAGER", "INSPECTOR"), async (req, res) => {
+  const Schema = z.object({
+    clientId: z.string().min(1),
+    equipmentId: z.string().min(1),
+    category: z.enum(["MAJOR", "MINOR", "OBSERVATION"]),
+    description: z.string().min(3),
+    dueDate: z.string().datetime().optional().nullable()
+  });
 
-    const count = await prisma.ncr.count();
-    const ncrCode = `NCR-${String(count + 1).padStart(6, "0")}`;
+  const parsed = Schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
 
-    const row = await prisma.ncr.create({
-      data: {
-        ncrCode,
-        clientId: d.clientId,
-        equipmentId: d.equipmentId,
-        inspectionId: d.inspectionId ?? null,
-        category: d.category,
-        description: d.description,
-        assignedToUserId: d.assignedToUserId ?? null,
-        dueDate: d.dueDate ? new Date(d.dueDate) : null
-      }
-    });
+  const ncrCode = makeNcrCode();
 
-    res.status(201).json(row);
-  } catch (e) { next(e); }
+  const created = await prisma.ncr.create({
+    data: {
+      ncrCode,
+      clientId: parsed.data.clientId,
+      equipmentId: parsed.data.equipmentId,
+      category: parsed.data.category,
+      description: parsed.data.description,
+      dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null,
+      status: "OPEN"
+    }
+  });
+
+  await prisma.auditLog.create({ data: { userId: req.user.sub, action: "NCR_CREATE", entityType: "Ncr", entityId: created.id, ip: req.ip } });
+  res.json(created);
 });
 
-router.patch("/ncrs/:id", requireAuth, requireRole("ADMIN", "MANAGER"), audit("UPDATE_NCR", "NCR"), async (req, res, next) => {
-  try {
-    const d = req.body ?? {};
-    const row = await prisma.ncr.update({
-      where: { id: req.params.id },
-      data: {
-        status: d.status ?? undefined,
-        closedAt: d.status === "CLOSED" ? new Date() : undefined
-      }
-    });
-    res.json(row);
-  } catch (e) { next(e); }
+router.patch("/:id", requireAuth, requireRole("ADMIN", "MANAGER"), async (req, res) => {
+  const Schema = z.object({ status: z.enum(["OPEN", "IN_PROGRESS", "CLOSED"]) });
+  const parsed = Schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
+
+  const updated = await prisma.ncr.update({
+    where: { id: req.params.id },
+    data: {
+      status: parsed.data.status,
+      closedAt: parsed.data.status === "CLOSED" ? new Date() : null
+    }
+  });
+
+  await prisma.auditLog.create({ data: { userId: req.user.sub, action: "NCR_UPDATE", entityType: "Ncr", entityId: updated.id, ip: req.ip } });
+  res.json(updated);
 });
 
 export default router;
