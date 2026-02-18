@@ -1,115 +1,66 @@
-import { Router } from "express";
-import { PrismaClient } from "@prisma/client";
+import express from "express";
+import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
-import { enforceClientScope } from "../middleware/clientScope.js";
 
-const prisma = new PrismaClient();
-const router = Router();
+const router = express.Router();
 
-/**
- * GET /api/dashboard/kpis
- * - Admin/Manager/Inspector: global
- * - Client: scoped to their clientId only
- */
-router.get("/kpis", requireAuth, enforceClientScope, async (req, res, next) => {
-  try {
-    const scopeClientId = req.clientScopeId ?? null;
+router.get("/kpis", requireAuth, async (req, res) => {
+  const whereClient = req.user.role === "CLIENT" && req.user.clientId ? { id: req.user.clientId } : {};
+  const whereEquipment = req.user.role === "CLIENT" && req.user.clientId ? { clientId: req.user.clientId } : {};
+  const whereNcr = req.user.role === "CLIENT" && req.user.clientId ? { clientId: req.user.clientId } : {};
+  const wherePfmea = req.user.role === "CLIENT" && req.user.clientId ? { clientId: req.user.clientId } : {};
 
-    const now = new Date();
-    const in30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    const in15 = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
+  const totalClients = await prisma.client.count({ where: whereClient });
+  const totalEquipment = await prisma.equipment.count({ where: whereEquipment });
 
-    const equipmentWhere = scopeClientId ? { clientId: scopeClientId } : {};
-    const inspectionsWhere = scopeClientId ? { clientId: scopeClientId } : {};
-    const ncrWhere = scopeClientId ? { clientId: scopeClientId } : {};
-    const pfmeaWhere = scopeClientId ? { clientId: scopeClientId } : {};
+  const now = new Date();
+  const in30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const in15 = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000);
 
-    const [
-      totalClients,
-      totalEquipment,
-      expiring30,
-      expiring15,
-      expiredEquipment,
-      openNcrs,
-      highRiskPfmea
-    ] = await Promise.all([
-      scopeClientId ? Promise.resolve(1) : prisma.client.count({ where: { status: "ACTIVE" } }),
-      prisma.equipment.count({ where: equipmentWhere }),
-      prisma.equipment.count({ where: { ...equipmentWhere, nextDueDate: { gt: now, lte: in30 } } }),
-      prisma.equipment.count({ where: { ...equipmentWhere, nextDueDate: { gt: now, lte: in15 } } }),
-      prisma.equipment.count({ where: { ...equipmentWhere, nextDueDate: { lte: now } } }),
-      prisma.ncr.count({ where: { ...ncrWhere, status: { in: ["OPEN", "IN_PROGRESS"] } } }),
-      prisma.pfmeaItem.count({ where: { ...pfmeaWhere, riskLevel: { in: ["HIGH", "CRITICAL"] }, status: { in: ["OPEN", "VERIFIED"] } } })
-    ]);
+  const expiring30 = await prisma.equipment.count({ where: { ...whereEquipment, nextDueDate: { lte: in30, gte: now } } });
+  const expiring15 = await prisma.equipment.count({ where: { ...whereEquipment, nextDueDate: { lte: in15, gte: now } } });
+  const expiredEquipment = await prisma.equipment.count({ where: { ...whereEquipment, nextDueDate: { lt: now } } });
 
-    // Compliance % (simple):
-    // compliant = equipment not expired
-    const compliant = totalEquipment - expiredEquipment;
-    const compliancePct = totalEquipment === 0 ? 100 : Math.round((compliant / totalEquipment) * 100);
+  const openNcrs = await prisma.ncr.count({ where: { ...whereNcr, status: { not: "CLOSED" } } });
+  const highRiskPfmea = await prisma.pfmeaItem.count({ where: { ...wherePfmea, riskLevel: { in: ["HIGH", "CRITICAL"] } } });
 
-    // Monthly inspections completed (last 30 days)
-    const last30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const monthlyInspectionsCompleted = await prisma.inspection.count({
-      where: { ...inspectionsWhere, datePerformed: { gte: last30, lte: now } }
-    });
+  // simple compliance: due date not expired
+  const compliant = await prisma.equipment.count({ where: { ...whereEquipment, OR: [{ nextDueDate: null }, { nextDueDate: { gte: now } }] } });
+  const compliancePct = totalEquipment === 0 ? 100 : Math.round((compliant / totalEquipment) * 100);
 
-    res.json({
-      totalClients,
-      totalEquipment,
-      expiring30,
-      expiring15,
-      expiredEquipment,
-      openNcrs,
-      highRiskPfmea,
-      compliancePct,
-      monthlyInspectionsCompleted
-    });
-  } catch (e) {
-    next(e);
-  }
+  res.json({
+    totalClients,
+    totalEquipment,
+    expiring30,
+    expiring15,
+    expiredEquipment,
+    openNcrs,
+    highRiskPfmea,
+    compliancePct
+  });
 });
 
-/**
- * GET /api/dashboard/inspections-by-month?months=12
- * returns [{ month: "2026-02", count: 12 }, ...]
- */
-router.get("/inspections-by-month", requireAuth, enforceClientScope, async (req, res, next) => {
-  try {
-    const scopeClientId = req.clientScopeId ?? null;
-    const months = Math.max(1, Math.min(24, Number(req.query.months ?? 12)));
+router.get("/inspections-by-month", requireAuth, async (req, res) => {
+  const months = Math.max(1, Math.min(24, Number(req.query.months || 12)));
+  const where = {};
+  if (req.user.role === "CLIENT" && req.user.clientId) where.clientId = req.user.clientId;
 
-    const start = new Date();
-    start.setMonth(start.getMonth() - (months - 1));
-    start.setDate(1);
-    start.setHours(0, 0, 0, 0);
+  const now = new Date();
+  const out = [];
 
-    const where = {
-      ...(scopeClientId ? { clientId: scopeClientId } : {}),
-      datePerformed: { gte: start }
-    };
+  for (let i = months - 1; i >= 0; i--) {
+    const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
 
-    // Pull and bucket in JS to keep it simple/portable
-    const rows = await prisma.inspection.findMany({
-      where,
-      select: { datePerformed: true },
-      take: 50000
+    const count = await prisma.inspection.count({
+      where: { ...where, datePerformed: { gte: start, lt: end } }
     });
 
-    const map = new Map();
-    for (const r of rows) {
-      const d = r.datePerformed;
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      map.set(key, (map.get(key) ?? 0) + 1);
-    }
-
-    const out = Array.from(map.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([month, count]) => ({ month, count }));
-
-    res.json(out);
-  } catch (e) {
-    next(e);
+    const month = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`;
+    out.push({ month, count });
   }
+
+  res.json(out);
 });
 
 export default router;
