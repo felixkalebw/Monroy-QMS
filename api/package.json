@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node src/server.js",
     "start": "node src/server.js",
-    "start:prod": "npx prisma db push && node src/server.js",
+   "start:prod": "npx prisma db push --schema=./prisma/schema.prisma && node src/server.js"
     "prisma:generate": "prisma generate"
   },
   "dependencies": {
