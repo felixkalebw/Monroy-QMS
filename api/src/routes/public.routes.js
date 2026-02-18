@@ -1,52 +1,27 @@
-import { Router } from "express";
-import { PrismaClient } from "@prisma/client";
+import express from "express";
+import { prisma } from "../prisma.js";
 
-const prisma = new PrismaClient();
-const router = Router();
+const router = express.Router();
 
-/**
- * Public verification page data:
- * GET /public/verify/:publicCode
- */
-router.get("/verify/:publicCode", async (req, res, next) => {
-  try {
-    const { publicCode } = req.params;
+// Public QR verify (no auth)
+router.get("/verify/:publicCode", async (req, res) => {
+  const qr = await prisma.equipmentQr.findUnique({
+    where: { publicCode: req.params.publicCode },
+    include: { equipment: true }
+  });
 
-    const qr = await prisma.equipmentQr.findUnique({
-      where: { publicCode },
-      include: { equipment: { include: { client: true } } }
-    });
+  if (!qr) return res.status(404).json({ valid: false, error: "Code not found" });
 
-    if (!qr) return res.status(404).json({ valid: false, message: "Not found" });
+  const latestInspection = await prisma.inspection.findFirst({
+    where: { equipmentId: qr.equipmentId },
+    orderBy: { datePerformed: "desc" }
+  });
 
-    const eq = qr.equipment;
-
-    // Latest inspection (if any)
-    const latest = await prisma.inspection.findFirst({
-      where: { equipmentId: eq.id },
-      orderBy: { datePerformed: "desc" }
-    });
-
-    res.json({
-      valid: true,
-      equipment: {
-        equipmentCode: eq.equipmentCode,
-        type: eq.type,
-        serialNumber: eq.serialNumber,
-        clientName: eq.client.name,
-        nextDueDate: eq.nextDueDate
-      },
-      latestInspection: latest
-        ? {
-            inspectionCode: latest.inspectionCode,
-            type: latest.type,
-            datePerformed: latest.datePerformed,
-            certificateExpiryDate: latest.certificateExpiryDate,
-            certificateIssued: latest.certificateIssued
-          }
-        : null
-    });
-  } catch (e) { next(e); }
+  return res.json({
+    valid: true,
+    equipment: qr.equipment,
+    latestInspection
+  });
 });
 
 export default router;
