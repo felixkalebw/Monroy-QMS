@@ -1,182 +1,85 @@
-import { Router } from "express";
-import { PrismaClient } from "@prisma/client";
-import { requireAuth } from "../middleware/auth.js";
-import { requireRole } from "../middleware/rbac.js";
-import { audit } from "../middleware/audit.js";
-import { enforceClientScope } from "../middleware/clientScope.js";
-import QRCode from "qrcode";
-import { env } from "../config/env.js";
+import express from "express";
+import { z } from "zod";
+import { prisma } from "../prisma.js";
+import { requireAuth, requireRole } from "../middleware/auth.js";
+import { makeEquipmentCode, makePublicCode } from "../utils/codes.js";
 
-const prisma = new PrismaClient();
-const router = Router();
+const router = express.Router();
 
-/**
- * GET /api/equipment
- * Query params:
- *  - clientId
- *  - type
- *  - status
- *  - search (serialNumber or equipmentCode contains)
- *  - dueFrom (ISO date)
- *  - dueTo (ISO date)
- *  - page (default 1)
- *  - pageSize (default 20, max 100)
- *
- * CLIENT role: forced to their clientId
- */
-router.get("/", requireAuth, enforceClientScope, async (req, res, next) => {
-  try {
-    const scopeClientId = req.clientScopeId ?? null;
+router.get("/", requireAuth, async (req, res) => {
+  const page = Math.max(1, Number(req.query.page || 1));
+  const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize || 20)));
+  const search = (req.query.search || "").toString().trim();
+  const type = (req.query.type || "").toString().trim();
+  const clientId = (req.query.clientId || "").toString().trim();
 
-    const page = Math.max(1, Number(req.query.page ?? 1));
-    const pageSize = Math.max(1, Math.min(100, Number(req.query.pageSize ?? 20)));
-    const skip = (page - 1) * pageSize;
+  const where = {};
 
-    const clientId = scopeClientId ?? (req.query.clientId || undefined);
-    const type = req.query.type || undefined;
-    const status = req.query.status || undefined;
-    const search = (req.query.search || "").trim();
-    const dueFrom = req.query.dueFrom ? new Date(String(req.query.dueFrom)) : null;
-    const dueTo = req.query.dueTo ? new Date(String(req.query.dueTo)) : null;
-
-    const where = {
-      ...(clientId ? { clientId } : {}),
-      ...(type ? { type } : {}),
-      ...(status ? { status } : {}),
-      ...(search
-        ? {
-            OR: [
-              { serialNumber: { contains: search, mode: "insensitive" } },
-              { equipmentCode: { contains: search, mode: "insensitive" } }
-            ]
-          }
-        : {}),
-      ...(dueFrom || dueTo
-        ? {
-            nextDueDate: {
-              ...(dueFrom ? { gte: dueFrom } : {}),
-              ...(dueTo ? { lte: dueTo } : {})
-            }
-          }
-        : {})
-    };
-
-    const [total, rows] = await Promise.all([
-      prisma.equipment.count({ where }),
-      prisma.equipment.findMany({
-        where,
-        include: { client: true, qr: true },
-        orderBy: { createdAt: "desc" },
-        skip,
-        take: pageSize
-      })
-    ]);
-
-    res.json({
-      page,
-      pageSize,
-      total,
-      totalPages: Math.ceil(total / pageSize),
-      items: rows
-    });
-  } catch (e) {
-    next(e);
+  if (req.user.role === "CLIENT" && req.user.clientId) {
+    where.clientId = req.user.clientId;
+  } else if (clientId) {
+    where.clientId = clientId;
   }
+
+  if (type) where.type = type;
+
+  if (search) {
+    where.OR = [
+      { serialNumber: { contains: search, mode: "insensitive" } },
+      { equipmentCode: { contains: search, mode: "insensitive" } }
+    ];
+  }
+
+  const total = await prisma.equipment.count({ where });
+  const items = await prisma.equipment.findMany({
+    where,
+    include: { client: true, qr: true },
+    orderBy: { createdAt: "desc" },
+    skip: (page - 1) * pageSize,
+    take: pageSize
+  });
+
+  res.json({ page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)), items });
 });
 
-/**
- * POST /api/equipment
- * (Admin/Manager/Inspector)
- */
-router.post("/", requireAuth, requireRole("ADMIN", "MANAGER", "INSPECTOR"), audit("CREATE_EQUIPMENT", "EQUIPMENT"), async (req, res, next) => {
-  try {
-    const d = req.body ?? {};
+router.post("/", requireAuth, requireRole("ADMIN", "MANAGER", "INSPECTOR"), async (req, res) => {
+  const Schema = z.object({
+    clientId: z.string().min(1),
+    siteId: z.string().optional().nullable(),
+    type: z.string().min(2),
+    serialNumber: z.string().min(1),
+    manufacturer: z.string().optional().nullable(),
+    yearOfManufacture: z.number().int().optional().nullable(),
+    countryOfOrigin: z.string().optional().nullable(),
+    swl: z.number().optional().nullable(),
+    mawp: z.number().optional().nullable(),
+    designPressure: z.number().optional().nullable(),
+    testPressure: z.number().optional().nullable()
+  });
 
-    const count = await prisma.equipment.count();
-    const equipmentCode = `EQ-${String(count + 1).padStart(6, "0")}`;
+  const parsed = Schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
 
-    const row = await prisma.equipment.create({
-      data: {
-        clientId: d.clientId,
-        siteId: d.siteId ?? null,
-        equipmentCode,
-        type: d.type,
-        serialNumber: d.serialNumber,
-        manufacturer: d.manufacturer ?? null,
-        yearOfManufacture: d.yearOfManufacture ?? null,
-        countryOfOrigin: d.countryOfOrigin ?? null,
-        swl: d.swl ?? null,
-        mawp: d.mawp ?? null,
-        designPressure: d.designPressure ?? null,
-        testPressure: d.testPressure ?? null,
-        intervalDays: d.intervalDays ?? null,
-        nextDueDate: d.nextDueDate ? new Date(d.nextDueDate) : null
-      }
-    });
+  // CLIENT users cannot create
+  if (req.user.role === "CLIENT") return res.status(403).json({ error: "Forbidden" });
 
-    const publicCode = `PUB-${row.id.slice(-10)}`;
-    const qr = await prisma.equipmentQr.create({
-      data: { equipmentId: row.id, publicCode }
-    });
-
-    res.status(201).json({ ...row, qr });
-  } catch (e) {
-    if (String(e?.message ?? "").includes("Unique constraint")) {
-      return res.status(409).json({ error: "Duplicate serial number for this client" });
+  const equipmentCode = makeEquipmentCode();
+  const created = await prisma.equipment.create({
+    data: {
+      ...parsed.data,
+      equipmentCode
     }
-    next(e);
-  }
-});
+  });
 
-/**
- * GET /api/equipment/:id
- * CLIENT role: can only access their client equipment
- */
-router.get("/:id", requireAuth, enforceClientScope, async (req, res, next) => {
-  try {
-    const scopeClientId = req.clientScopeId ?? null;
+  // auto-create QR public code
+  await prisma.equipmentQr.create({
+    data: { equipmentId: created.id, publicCode: makePublicCode() }
+  });
 
-    const row = await prisma.equipment.findUnique({
-      where: { id: req.params.id },
-      include: {
-        client: true,
-        qr: true,
-        inspections: { orderBy: { datePerformed: "desc" }, take: 50 }
-      }
-    });
+  await prisma.auditLog.create({ data: { userId: req.user.sub, action: "EQUIPMENT_CREATE", entityType: "Equipment", entityId: created.id, ip: req.ip } });
 
-    if (!row) return res.status(404).json({ error: "Not found" });
-    if (scopeClientId && row.clientId !== scopeClientId) return res.status(403).json({ error: "Forbidden" });
-
-    res.json(row);
-  } catch (e) {
-    next(e);
-  }
-});
-
-/**
- * GET /api/equipment/:id/qr
- * CLIENT role: can access if equipment belongs to them
- */
-router.get("/:id/qr", requireAuth, enforceClientScope, async (req, res, next) => {
-  try {
-    const scopeClientId = req.clientScopeId ?? null;
-
-    const eq = await prisma.equipment.findUnique({
-      where: { id: req.params.id },
-      include: { qr: true }
-    });
-
-    if (!eq?.qr) return res.status(404).json({ error: "QR not generated" });
-    if (scopeClientId && eq.clientId !== scopeClientId) return res.status(403).json({ error: "Forbidden" });
-
-    const verifyUrl = `${env.PUBLIC_VERIFY_BASE_URL}/${eq.qr.publicCode}`;
-    const pngDataUrl = await QRCode.toDataURL(verifyUrl);
-
-    res.json({ publicCode: eq.qr.publicCode, verifyUrl, pngDataUrl });
-  } catch (e) {
-    next(e);
-  }
+  const full = await prisma.equipment.findUnique({ where: { id: created.id }, include: { client: true, qr: true } });
+  res.json(full);
 });
 
 export default router;
