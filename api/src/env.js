@@ -1,9 +1,5 @@
-import { z } from "zod";
-
-const schema = z.object({
-  DATABASE_URL: z.string().min(10),
-  JWT_ACCESS_SECRET: z.string().min(16),
-  NODE_ENV: z.string().default("production")
-});
-
-export const env = schema.parse(process.env);
+export const env = {
+  NODE_ENV: process.env.NODE_ENV || "development",
+  DATABASE_URL: process.env.DATABASE_URL || "",
+  JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET || "dev_secret_change_me",
+};
