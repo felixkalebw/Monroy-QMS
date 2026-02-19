@@ -1,33 +1,27 @@
 import express from "express";
 import helmet from "helmet";
 import morgan from "morgan";
-import dotenv from "dotenv";
 import cors from "cors";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 
+import { env } from "./env.js";
 import { prisma } from "./prisma.js";
-import authRoutes from "./routes/auth.routes.js";
+import { login, requireAuth } from "./auth.js";
 
 dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
-const NODE_ENV = process.env.NODE_ENV || "production";
-const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 
 app.use(helmet());
-app.use(cors({ origin: CORS_ORIGIN === "*" ? true : CORS_ORIGIN.split(",").map(s => s.trim()) }));
+app.use(cors({ origin: true }));
 app.use(express.json({ limit: "10mb" }));
 app.use(morgan("combined"));
 
-// ✅ Home route so "/" works
-app.get("/", (req, res) => {
-  res.send("Monroy QMS API is running. Try /health or /api");
-});
+app.get("/health", (req, res) => res.json({ ok: true, env: env.NODE_ENV }));
 
-// ✅ Health route always works
-app.get("/health", (req, res) => res.json({ ok: true, env: NODE_ENV }));
-
-// ✅ DB health route
 app.get("/health/db", async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -37,9 +31,76 @@ app.get("/health/db", async (req, res) => {
   }
 });
 
-// API routes
+// Home
 app.get("/api", (req, res) => res.json({ ok: true, name: "Monroy QMS API" }));
-app.use("/api/auth", authRoutes);
+
+// Auth
+app.post("/api/auth/login", async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+
+  const result = await login(String(email), String(password));
+  if (!result) return res.status(401).json({ error: "Invalid credentials" });
+  res.json(result);
+});
+
+// ------------------------
+// CRUD MVP (Enterprise Demo)
+// ------------------------
+
+// Clients
+app.get("/api/clients", requireAuth, async (req, res) => {
+  const clients = await prisma.client.findMany({ orderBy: { createdAt: "desc" } });
+  res.json({ items: clients });
+});
+app.post("/api/clients", requireAuth, async (req, res) => {
+  const { name, category, notes } = req.body || {};
+  const client = await prisma.client.create({
+    data: { name, category, notes: notes || null }
+  });
+  res.json(client);
+});
+
+// Equipment
+app.get("/api/equipment", requireAuth, async (req, res) => {
+  const items = await prisma.equipment.findMany({ orderBy: { createdAt: "desc" } });
+  res.json({ items });
+});
+app.post("/api/equipment", requireAuth, async (req, res) => {
+  const data = req.body || {};
+  const item = await prisma.equipment.create({ data });
+  res.json(item);
+});
+
+// Inspections
+app.get("/api/inspections", requireAuth, async (req, res) => {
+  const items = await prisma.inspection.findMany({ orderBy: { datePerformed: "desc" } });
+  res.json({ items });
+});
+app.post("/api/inspections", requireAuth, async (req, res) => {
+  const item = await prisma.inspection.create({ data: req.body || {} });
+  res.json(item);
+});
+
+// PFMEA
+app.get("/api/pfmea", requireAuth, async (req, res) => {
+  const items = await prisma.pfmeaItem.findMany({ orderBy: { createdAt: "desc" } });
+  res.json({ items });
+});
+app.post("/api/pfmea", requireAuth, async (req, res) => {
+  const item = await prisma.pfmeaItem.create({ data: req.body || {} });
+  res.json(item);
+});
+
+// NCR
+app.get("/api/ncr", requireAuth, async (req, res) => {
+  const items = await prisma.ncr.findMany({ orderBy: { createdAt: "desc" } });
+  res.json({ items });
+});
+app.post("/api/ncr", requireAuth, async (req, res) => {
+  const item = await prisma.ncr.create({ data: req.body || {} });
+  res.json(item);
+});
 
 // Error handler
 app.use((err, req, res, next) => {
@@ -47,20 +108,26 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Server error" });
 });
 
-// ✅ Listen FIRST so Render detects the port
-app.listen(PORT, () => {
-  console.log(`✅ Server listening on port ${PORT}`);
+// ✅ Serve built React app from api/public_dist
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const WEB_DIST = path.join(__dirname, "..", "public_dist");
+
+app.use(express.static(WEB_DIST));
+app.get("*", (req, res) => {
+  if (req.path.startsWith("/api") || req.path.startsWith("/health")) return res.status(404).end();
+  res.sendFile(path.join(WEB_DIST, "index.html"));
 });
 
-// Connect to DB in background (won’t prevent port binding)
+// ✅ Listen first (Render port scan safe)
+app.listen(PORT, () => console.log(`✅ Server listening on port ${PORT}`));
+
+// DB connect in background
 (async () => {
   try {
     await prisma.$connect();
     console.log("✅ Database connected");
   } catch (e) {
-    console.error("⚠️ Database connection failed (server still running):", e?.message || e);
+    console.error("⚠️ Database connection failed:", e?.message || e);
   }
 })();
-
-process.on("unhandledRejection", (err) => console.error("UNHANDLED REJECTION:", err));
-process.on("uncaughtException", (err) => console.error("UNCAUGHT EXCEPTION:", err));
