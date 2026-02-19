@@ -1,4 +1,4 @@
-// public/package.json  (make sure react-router-dom exists)
+ public/package.json  (make sure react-router-dom exists)
 {
   "name": "monroy-qms-web",
   "private": true,
