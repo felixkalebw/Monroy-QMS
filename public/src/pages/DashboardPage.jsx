@@ -1,6 +1,6 @@
 // public/src/pages/Dashboard.jsx
 import React, { useEffect, useState } from "react";
-import { apiGet, apiPost, isDemoMode, setDemoMode } from "../lib/api.js";
+import { apiGet, apiPost, setDemoMode } from "../lib/api.js";
 import { useNavigate } from "react-router-dom";
 
 const Card = ({ title, value }) => (
@@ -18,12 +18,15 @@ export default function Dashboard() {
   const [ncrs, setNcrs] = useState([]);
 
   async function load() {
+    // Always run in demo mode for presentation (no auth/no DB required)
+    setDemoMode(true);
+
     const s = await apiGet("/api/demo/stats").catch(() => null);
     if (s?.stats) setStats(s.stats);
 
-    const c = await apiGet("/api/clients");
-    const e = await apiGet("/api/equipment");
-    const n = await apiGet("/api/ncr");
+    const c = await apiGet("/api/clients").catch(() => ({ items: [] }));
+    const e = await apiGet("/api/equipment").catch(() => ({ items: [] }));
+    const n = await apiGet("/api/ncr").catch(() => ({ items: [] }));
 
     setClients(c.items || []);
     setEquipment(e.items || []);
@@ -31,14 +34,15 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
-    load().catch((e) => alert(e.message));
+    load().catch(() => {});
   }, []);
 
   async function quickCreateNcr() {
     if (!clients[0] || !equipment[0]) {
-      alert("Need at least 1 client and 1 equipment.");
+      alert("Demo data missing. Refresh the page.");
       return;
     }
+
     const created = await apiPost("/api/ncr", {
       clientId: clients[0].id,
       equipmentId: equipment[0].id,
@@ -46,16 +50,15 @@ export default function Dashboard() {
       category: "MINOR",
       description: "Demo NCR created for presentation.",
       status: "OPEN"
-    });
-    alert("✅ NCR created");
+    }).catch(() => null);
+
+    if (!created?.id) {
+      alert("Could not create NCR (demo store not loaded). Refresh and try again.");
+      return;
+    }
+
     await load();
     nav(`/ncr-report?id=${created.id}`);
-  }
-
-  function logout() {
-    localStorage.removeItem("token");
-    setDemoMode(false);
-    nav("/");
   }
 
   return (
@@ -63,18 +66,15 @@ export default function Dashboard() {
       <div style={{ background: "#111827", color: "white", padding: 16 }}>
         <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
           <div>
-            <div style={{ fontWeight: 900, fontSize: 18 }}>Monroy QMS — Dashboard</div>
+            <div style={{ fontWeight: 900, fontSize: 18 }}>Monroy QMS — Enterprise Demo</div>
             <div style={{ fontSize: 12, opacity: 0.85 }}>
-              Mode: {isDemoMode() ? "DEMO (offline safe)" : "LIVE"} • Present-ready
+              Presentation Mode: DEMO (offline safe) • No Login Required
             </div>
           </div>
 
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <button
-              onClick={() => {
-                setDemoMode(!isDemoMode());
-                load().catch(() => {});
-              }}
+              onClick={() => window.location.reload()}
               style={{
                 padding: "10px 12px",
                 borderRadius: 12,
@@ -85,22 +85,7 @@ export default function Dashboard() {
                 cursor: "pointer"
               }}
             >
-              Toggle Demo
-            </button>
-
-            <button
-              onClick={logout}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.3)",
-                background: "transparent",
-                color: "white",
-                fontWeight: 800,
-                cursor: "pointer"
-              }}
-            >
-              Logout
+              Refresh Demo Data
             </button>
           </div>
         </div>
@@ -108,25 +93,29 @@ export default function Dashboard() {
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: 16 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 12 }}>
-          <Card title="Active Clients" value={stats?.totalClients ?? "-"} />
-          <Card title="Equipment Registered" value={stats?.totalEquipment ?? "-"} />
+          <Card title="Active Clients" value={stats?.totalClients ?? clients.length ?? "-"} />
+          <Card title="Equipment Registered" value={stats?.totalEquipment ?? equipment.length ?? "-"} />
           <Card title="Expiring ≤ 30 days" value={stats?.expiring30 ?? "-"} />
           <Card title="Expired Equipment" value={stats?.expired ?? "-"} />
-          <Card title="Open NCRs" value={stats?.openNcrs ?? "-"} />
+          <Card title="Open NCRs" value={stats?.openNcrs ?? ncrs.filter(x => x.status !== "CLOSED").length ?? "-"} />
           <Card title="Inspections This Month" value={stats?.inspectionsThisMonth ?? "-"} />
         </div>
 
         <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
           <button
             onClick={quickCreateNcr}
-            style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #111827", background: "#111827", color: "white", fontWeight: 900 }}
+            style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #111827", background: "#111827", color: "white", fontWeight: 900, cursor: "pointer" }}
           >
             + Create Demo NCR + Open Statutory NCR Report
           </button>
 
           <button
-            onClick={() => nav("/ncr-report?id=" + (ncrs[0]?.id || ""))}
-            style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #d1d5db", background: "white", fontWeight: 900 }}
+            onClick={() => {
+              const id = ncrs[0]?.id;
+              if (!id) return alert("No NCR found. Click Create Demo NCR first.");
+              nav("/ncr-report?id=" + id);
+            }}
+            style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #d1d5db", background: "white", fontWeight: 900, cursor: "pointer" }}
           >
             Open First NCR Report
           </button>
@@ -142,6 +131,11 @@ export default function Dashboard() {
                   <div style={{ fontSize: 12, color: "#6b7280" }}>{c.category} • {c.status}</div>
                 </div>
               ))}
+              {!clients.length && (
+                <div style={{ padding: 10, borderRadius: 12, border: "1px dashed #d1d5db", color: "#6b7280" }}>
+                  No demo clients loaded yet. Click “Refresh Demo Data”.
+                </div>
+              )}
             </div>
           </div>
 
@@ -160,6 +154,11 @@ export default function Dashboard() {
                   </div>
                 </button>
               ))}
+              {!ncrs.length && (
+                <div style={{ padding: 10, borderRadius: 12, border: "1px dashed #d1d5db", color: "#6b7280" }}>
+                  No NCRs yet. Click “Create Demo NCR”.
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -175,9 +174,13 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
+            {!equipment.length && (
+              <div style={{ padding: 10, borderRadius: 12, border: "1px dashed #d1d5db", color: "#6b7280" }}>
+                No demo equipment loaded yet. Click “Refresh Demo Data”.
+              </div>
+            )}
           </div>
         </div>
-
       </div>
     </div>
   );
