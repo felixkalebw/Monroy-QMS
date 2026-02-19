@@ -1,3 +1,5 @@
+  reportJson Json @default("{}") @map("report_json")
+
 generator client {
   provider = "prisma-client-js"
 }
