@@ -1,3 +1,4 @@
+// api/src/server.js
 import express from "express";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -16,13 +17,17 @@ dotenv.config();
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
 
-// ---- middleware
+// --------------------
+// Middleware
+// --------------------
 app.use(helmet());
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "10mb" }));
 app.use(morgan("combined"));
 
-// ---- health
+// --------------------
+// Health
+// --------------------
 app.get("/health", (req, res) => res.json({ ok: true, env: env.NODE_ENV }));
 
 app.get("/health/db", async (req, res) => {
@@ -34,31 +39,25 @@ app.get("/health/db", async (req, res) => {
   }
 });
 
-// ---- api home + api health (IMPORTANT)
+// --------------------
+// API base
+// --------------------
 app.get("/api", (req, res) => res.json({ ok: true, name: "Monroy QMS API" }));
 app.get("/api/health", (req, res) => res.json({ ok: true, api: true }));
 
-// ---- auth
-app.post("/api/auth/login", async (req, res, next) => {
-  try {
-    const { email, password } = req.body || {};
-    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+// --------------------
+// DEV helpers (TEMP)
+// --------------------
 
-    const result = await login(String(email), String(password));
-    if (!result) return res.status(401).json({ error: "Invalid credentials" });
-
-    res.json(result);
-  } catch (e) {
-    next(e);
-  }
-});
-
-// ✅ TEMP SEED ENDPOINT (remove after demo)
-// Call once: POST /api/dev/seed-admin  (with a header x-seed-key)
+// Create admin user once (remove after demo)
+// Call: POST /api/dev/seed-admin
+// Headers: x-seed-key: <SEED_KEY env>
+// Body: { "email": "...", "password": "...", "name": "..." }
 app.post("/api/dev/seed-admin", async (req, res, next) => {
   try {
-    const key = req.headers["x-seed-key"];
-    if (!key || String(key) !== String(process.env.SEED_KEY || "")) {
+    const seedKey = String(process.env.SEED_KEY || "");
+    const headerKey = String(req.headers["x-seed-key"] || "");
+    if (!seedKey || headerKey !== seedKey) {
       return res.status(403).json({ error: "Forbidden" });
     }
 
@@ -70,17 +69,42 @@ app.post("/api/dev/seed-admin", async (req, res, next) => {
     if (existing) return res.json({ ok: true, message: "Admin already exists", email });
 
     const passwordHash = await bcrypt.hash(password, 10);
+
     await prisma.user.create({
-      data: { name, email, passwordHash, role: "ADMIN" },
+      data: {
+        name,
+        email,
+        passwordHash,
+        role: "ADMIN"
+      }
     });
 
-    res.json({ ok: true, message: "Admin created", email, password });
+    res.json({ ok: true, message: "Admin created", email });
   } catch (e) {
     next(e);
   }
 });
 
-// ---- CRUD MVP (Enterprise Demo)
+// --------------------
+// Auth
+// --------------------
+app.post("/api/auth/login", async (req, res, next) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+
+    const result = await login(String(email).toLowerCase(), String(password));
+    if (!result) return res.status(401).json({ error: "Invalid credentials" });
+
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// --------------------
+// CRUD MVP (Enterprise Demo)
+// --------------------
 
 // Clients
 app.get("/api/clients", requireAuth, async (req, res, next) => {
@@ -91,12 +115,16 @@ app.get("/api/clients", requireAuth, async (req, res, next) => {
     next(e);
   }
 });
+
 app.post("/api/clients", requireAuth, async (req, res, next) => {
   try {
     const { name, category, notes } = req.body || {};
+    if (!name || !category) return res.status(400).json({ error: "name and category required" });
+
     const client = await prisma.client.create({
-      data: { name, category, notes: notes || null },
+      data: { name: String(name), category: String(category), notes: notes ? String(notes) : null }
     });
+
     res.json(client);
   } catch (e) {
     next(e);
@@ -112,9 +140,16 @@ app.get("/api/equipment", requireAuth, async (req, res, next) => {
     next(e);
   }
 });
+
 app.post("/api/equipment", requireAuth, async (req, res, next) => {
   try {
-    const item = await prisma.equipment.create({ data: req.body || {} });
+    const data = req.body || {};
+    // Minimal required fields (adjust to your schema)
+    if (!data.clientId || !data.name || !data.type || !data.serialNumber) {
+      return res.status(400).json({ error: "clientId, name, type, serialNumber required" });
+    }
+
+    const item = await prisma.equipment.create({ data });
     res.json(item);
   } catch (e) {
     next(e);
@@ -130,9 +165,13 @@ app.get("/api/inspections", requireAuth, async (req, res, next) => {
     next(e);
   }
 });
+
 app.post("/api/inspections", requireAuth, async (req, res, next) => {
   try {
-    const item = await prisma.inspection.create({ data: req.body || {} });
+    const data = req.body || {};
+    if (!data.equipmentId) return res.status(400).json({ error: "equipmentId required" });
+
+    const item = await prisma.inspection.create({ data });
     res.json(item);
   } catch (e) {
     next(e);
@@ -148,6 +187,7 @@ app.get("/api/pfmea", requireAuth, async (req, res, next) => {
     next(e);
   }
 });
+
 app.post("/api/pfmea", requireAuth, async (req, res, next) => {
   try {
     const item = await prisma.pfmeaItem.create({ data: req.body || {} });
@@ -166,6 +206,7 @@ app.get("/api/ncr", requireAuth, async (req, res, next) => {
     next(e);
   }
 });
+
 app.post("/api/ncr", requireAuth, async (req, res, next) => {
   try {
     const item = await prisma.ncr.create({ data: req.body || {} });
@@ -175,18 +216,19 @@ app.post("/api/ncr", requireAuth, async (req, res, next) => {
   }
 });
 
-// ---- error handler (prevents 502 from crashing)
+// --------------------
+// Error handler (prevents crashes -> 502)
+// --------------------
 app.use((err, req, res, next) => {
   console.error("API ERROR:", err);
   res.status(500).json({ error: err?.message ? String(err.message) : "Server error" });
 });
 
-// ---- serve built React app
+// --------------------
+// Serve React build (api/public_dist)
+// --------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// IMPORTANT: this must match where your build copies the web dist
-// Your script "copy-web-dist.js" should copy public/dist -> api/public_dist
 const WEB_DIST = path.join(__dirname, "..", "public_dist");
 
 app.use(express.static(WEB_DIST));
@@ -195,10 +237,14 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(WEB_DIST, "index.html"));
 });
 
-// ---- listen (Render port scan safe)
+// --------------------
+// Start server (Render port scan safe)
+// --------------------
 app.listen(PORT, "0.0.0.0", () => console.log(`✅ Server listening on port ${PORT}`));
 
-// ---- connect in background (won't block startup)
+// --------------------
+// Connect DB in background
+// --------------------
 (async () => {
   try {
     await prisma.$connect();
