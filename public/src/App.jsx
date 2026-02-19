@@ -1,7 +1,7 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import Dashboard from "./pages/Dashboard.jsx";
-import NcrStatutoryReport from "./pages/NcrStatutoryReport.jsx";
+import Dashboard from "./Pages/Dashboard.jsx";
+import NcrStatutoryReport from "./Pages/NcrStatutoryReport.jsx";
 
 function DisabledLogin() {
   return <Navigate to="/dashboard" replace />;
