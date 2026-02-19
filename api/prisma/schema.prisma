@@ -7,33 +7,41 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ======================
-// ENUMS
-// ======================
+//////////////////////////////////////////////////////
+// ENUMS (match your PostgreSQL enums EXACTLY)
+//////////////////////////////////////////////////////
 
 enum Role {
   ADMIN
   MANAGER
   INSPECTOR
   CLIENT
+
+  @@map("role_enum")
 }
 
 enum UserStatus {
   ACTIVE
   LOCKED
   DISABLED
+
+  @@map("user_status_enum")
 }
 
 enum ClientCategory {
   MINE
   INDUSTRIAL
   CONSTRUCTION
+
+  @@map("client_category_enum")
 }
 
 enum ClientStatus {
   ACTIVE
   INACTIVE
   SUSPENDED
+
+  @@map("client_status_enum")
 }
 
 enum EquipmentType {
@@ -50,18 +58,8 @@ enum EquipmentType {
   SAFETY_HARNESS
   CLAMPS_SHUTTER_CLAMPS
   STEP_LADDERS
-}
 
-enum InspectionType {
-  THOROUGH_EXAMINATION
-  VISUAL_INSPECTION
-  LOAD_TEST
-  HYDROSTATIC_TEST
-  PRESSURE_TEST
-  UT_THICKNESS_TEST
-  FUNCTIONAL_TEST
-  ROPE_CHAIN_CONDITION_CHECK
-  SAFETY_COMPLIANCE_CHECK
+  @@map("equipment_type_enum")
 }
 
 enum InspectionStatus {
@@ -69,6 +67,8 @@ enum InspectionStatus {
   SUBMITTED
   APPROVED
   REJECTED
+
+  @@map("inspection_status_enum")
 }
 
 enum RiskLevel {
@@ -76,215 +76,145 @@ enum RiskLevel {
   MEDIUM
   HIGH
   CRITICAL
-}
 
-enum PfmeaStatus {
-  OPEN
-  VERIFIED
-  CLOSED
+  @@map("risk_level_enum")
 }
 
 enum NcrCategory {
   MAJOR
   MINOR
   OBSERVATION
+
+  @@map("ncr_category_enum")
 }
 
 enum NcrStatus {
   OPEN
   IN_PROGRESS
   CLOSED
+
+  @@map("ncr_status_enum")
 }
 
-// ======================
-// MODELS
-// ======================
+//////////////////////////////////////////////////////
+// MODELS (MAPPED TO YOUR EXISTING TABLES)
+//////////////////////////////////////////////////////
 
 model User {
-  id           String     @id @default(cuid())
-  name         String
-  email        String     @unique
-  passwordHash String
-  role         Role       @default(INSPECTOR)
-  status       UserStatus @default(ACTIVE)
+  id                String      @id @map("id")
+  name              String      @map("name")
+  email             String      @unique @map("email")
+  phone             String?     @map("phone")
+  passwordHash      String      @map("password_hash")
+  role              Role        @default(INSPECTOR) @map("role")
+  status            UserStatus  @default(ACTIVE) @map("status")
+  failedLoginCount  Int         @default(0) @map("failed_login_count")
+  lockUntil         DateTime?   @map("lock_until")
+  lastLoginAt       DateTime?   @map("last_login_at")
+  lastLoginIp       String?     @map("last_login_ip")
+  clientId          String?     @map("client_id")
 
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  @@map("users")
 }
 
 model Client {
-  id          String         @id @default(cuid())
-  name        String
-  category    ClientCategory
-  status      ClientStatus   @default(ACTIVE)
-  notes       String?
+  id        String        @id @map("id")
+  name      String        @map("name")
+  category  ClientCategory @map("category")
+  status    ClientStatus   @default(ACTIVE) @map("status")
+  notes     String?       @map("notes")
 
-  sites       ClientSite[]
-  contacts    ClientContact[]
-  equipment   Equipment[]
-  inspections Inspection[]
-  pfmeaItems  PfmeaItem[]
-  ncrs        Ncr[]
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
 
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-}
-
-model ClientSite {
-  id           String   @id @default(cuid())
-  clientId     String
-  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  name         String
-  locationText String?
-  gpsLat       Float?
-  gpsLng       Float?
-
-  equipment    Equipment[]
-  inspections  Inspection[]
-
-  @@index([clientId])
-}
-
-model ClientContact {
-  id       String @id @default(cuid())
-  clientId String
-  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  fullName String
-  position String?
-  email    String?
-  phone    String?
-
-  @@index([clientId])
+  @@map("clients")
 }
 
 model Equipment {
-  id                String        @id @default(cuid())
-  clientId          String
-  client            Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id               String        @id @map("id")
+  clientId         String        @map("client_id")
+  equipmentCode    String        @unique @map("equipment_code")
+  type             EquipmentType @map("type")
+  serialNumber     String        @map("serial_number")
 
-  siteId            String?
-  site              ClientSite?   @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  manufacturer     String?       @map("manufacturer")
+  yearOfManufacture Int?         @map("year_of_manufacture")
+  countryOfOrigin  String?       @map("country_of_origin")
 
-  equipmentCode     String        @unique
-  type              EquipmentType
-  serialNumber      String
+  swl              Float?        @map("swl")
+  mawp             Float?        @map("mawp")
+  designPressure   Float?        @map("design_pressure")
+  testPressure     Float?        @map("test_pressure")
 
-  manufacturer      String?
-  yearOfManufacture Int?
-  countryOfOrigin   String?
+  status           String        @default("ACTIVE") @map("status")
+  intervalDays     Int?          @map("interval_days")
+  nextDueDate      DateTime?     @map("next_due_date")
+  lastInspectedAt  DateTime?     @map("last_inspected_at")
 
-  swl               Float?
-  mawp              Float?
-  designPressure    Float?
-  testPressure      Float?
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
 
-  intervalDays      Int?
-  nextDueDate       DateTime?
-  lastInspectedAt   DateTime?
-
-  inspections       Inspection[]
-  pfmeaItems        PfmeaItem[]
-  ncrs              Ncr[]
-
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-
-  @@unique([clientId, serialNumber])
-  @@index([clientId, type])
-  @@index([nextDueDate])
+  @@map("equipment")
 }
 
 model Inspection {
-  id                    String           @id @default(cuid())
-  inspectionCode        String           @unique
+  id                   String      @id @map("id")
+  inspectionCode       String      @unique @map("inspection_code")
+  equipmentId          String      @map("equipment_id")
+  clientId             String      @map("client_id")
+  inspectorId          String      @map("inspector_id")
+  type                 String      @map("type")
+  datePerformed        DateTime    @map("date_performed")
+  findingsText         String?     @map("findings_text")
+  nonConformance       Boolean     @default(false) @map("non_conformance")
+  certificateIssued    Boolean     @default(false) @map("certificate_issued")
+  certificateExpiryDate DateTime?  @map("certificate_expiry_date")
+  status               InspectionStatus @default(DRAFT) @map("status")
 
-  equipmentId           String
-  equipment             Equipment        @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
 
-  clientId              String
-  client                Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  siteId                String?
-  site                  ClientSite?      @relation(fields: [siteId], references: [id], onDelete: SetNull)
-
-  type                  InspectionType
-  status                InspectionStatus @default(DRAFT)
-  datePerformed         DateTime
-
-  findingsText          String?
-  nonConformance        Boolean          @default(false)
-  certificateIssued     Boolean          @default(false)
-  certificateExpiryDate DateTime?
-
-  pfmeaItems            PfmeaItem[]
-  ncrs                  Ncr[]
-
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
-
-  @@index([clientId, datePerformed])
-  @@index([equipmentId, datePerformed])
+  @@map("inspections")
 }
 
 model PfmeaItem {
-  id                String      @id @default(cuid())
+  id            String    @id @map("id")
+  inspectionId  String    @map("inspection_id")
+  equipmentId   String    @map("equipment_id")
+  clientId      String    @map("client_id")
 
-  inspectionId      String
-  inspection        Inspection  @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  failureMode   String    @map("failure_mode")
+  failureCause  String    @map("failure_cause")
+  failureEffect String    @map("failure_effect")
 
-  equipmentId       String
-  equipment         Equipment   @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  severity      Int       @map("severity")
+  occurrence    Int       @map("occurrence")
+  detection     Int       @map("detection")
+  rpn           Int       @map("rpn")
+  riskLevel     RiskLevel @map("risk_level")
 
-  clientId          String
-  client            Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  status        String    @default("OPEN") @map("status")
 
-  failureMode       String
-  failureCause      String
-  failureEffect     String
-  existingControls  String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  severity          Int
-  occurrence        Int
-  detection         Int
-  rpn               Int
-  riskLevel         RiskLevel
-  status            PfmeaStatus @default(OPEN)
-
-  actionOwner       String?
-  actionDueDate     DateTime?
-  verificationNotes String?
-
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
-
-  @@index([clientId, riskLevel])
+  @@map("pfmea_items")
 }
 
 model Ncr {
-  id           String      @id @default(cuid())
-  ncrCode      String      @unique
+  id          String      @id @map("id")
+  ncrCode     String      @unique @map("ncr_code")
+  clientId    String      @map("client_id")
+  equipmentId String      @map("equipment_id")
+  category    NcrCategory @map("category")
+  description String      @map("description")
+  status      NcrStatus   @default(OPEN) @map("status")
 
-  clientId     String
-  client       Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
 
-  equipmentId  String
-  equipment    Equipment   @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-
-  inspectionId String?
-  inspection   Inspection? @relation(fields: [inspectionId], references: [id], onDelete: SetNull)
-
-  category     NcrCategory
-  description  String
-
-  dueDate      DateTime?
-  status       NcrStatus   @default(OPEN)
-  closedAt     DateTime?
-
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-
-  @@index([clientId, status])
-  @@index([dueDate])
+  @@map("ncrs")
 }
