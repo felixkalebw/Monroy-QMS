@@ -1,31 +1,19 @@
+// public/src/App.jsx
 import React from "react";
-import { Routes, Route, Link } from "react-router-dom";
-import LoginPage from "./pages/LoginPage.jsx";
-import DashboardPage from "./pages/DashboardPage.jsx";
-import VerifyPage from "./pages/VerifyPage.jsx";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import Login from "./pages/Login.jsx";
+import Dashboard from "./pages/Dashboard.jsx";
 import NcrStatutoryReport from "./pages/NcrStatutoryReport.jsx";
-
 
 export default function App() {
   return (
-    <div style={{ fontFamily: "system-ui", padding: 16 }}>
-      <header style={{ display: "flex", gap: 12, alignItems: "center" }}>
-        <strong>Monroy QMS</strong>
-        <nav style={{ display: "flex", gap: 10 }}>
-          <Link to="/">Dashboard</Link>
-          <Link to="/login">Login</Link>
-          <Link to="/verify/demo">Verify</Link>
-        </nav>
-      </header>
-
-      <hr style={{ margin: "16px 0" }} />
-
+    <BrowserRouter>
       <Routes>
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/login" element={<LoginPage />} />
+        <Route path="/" element={<Login />} />
+        <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/ncr-report" element={<NcrStatutoryReport />} />
-        <Route path="/verify/:publicCode" element={<VerifyPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </div>
+    </BrowserRouter>
   );
 }
