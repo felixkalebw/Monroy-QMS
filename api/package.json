@@ -7,11 +7,12 @@
     "node": ">=20"
   },
   "scripts": {
-    "start": "npm run db:push && node src/server.js",
-    "start:prod": "npm run db:push && node src/server.js",
-    "prisma:generate": "npx prisma generate --schema=./prisma/schema.prisma",
-    "db:push": "npx prisma db push --schema=./prisma/schema.prisma",
-    "seed": "node src/seed.js"
+  "start": "npm run db:push && node src/server.js",
+  "start:prod": "npm run db:push && node src/server.js",
+  "prisma:generate": "npx prisma generate --schema=./prisma/schema.prisma",
+  "db:push": "npx prisma db push --schema=./prisma/schema.prisma --accept-data-loss",
+  "seed": "node src/seed.js"
+
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
