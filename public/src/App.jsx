@@ -23,6 +23,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/ncr-report" element={<NcrStatutoryReport />} />
         <Route path="/verify/:publicCode" element={<VerifyPage />} />
       </Routes>
     </div>
