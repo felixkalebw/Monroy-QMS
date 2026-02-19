@@ -197,20 +197,34 @@ app.post("/api/pfmea", requireAuth, async (req, res, next) => {
   }
 });
 
-// NCR
-app.get("/api/ncr", requireAuth, async (req, res, next) => {
+// NCR REPORT (Statutory NCR Sections 1–7 + Legal)
+// GET report json
+app.get("/api/ncr/:id/report", requireAuth, async (req, res, next) => {
   try {
-    const items = await prisma.ncr.findMany({ orderBy: { createdAt: "desc" } });
-    res.json({ items });
+    const id = String(req.params.id);
+    const ncr = await prisma.ncr.findUnique({
+      where: { id },
+      select: { id: true, ncrCode: true, reportJson: true, updatedAt: true }
+    });
+    if (!ncr) return res.status(404).json({ error: "NCR not found" });
+    res.json({ ok: true, ...ncr });
   } catch (e) {
     next(e);
   }
 });
 
-app.post("/api/ncr", requireAuth, async (req, res, next) => {
+// PUT report json (save)
+app.put("/api/ncr/:id/report", requireAuth, async (req, res, next) => {
   try {
-    const item = await prisma.ncr.create({ data: req.body || {} });
-    res.json(item);
+    const id = String(req.params.id);
+    const reportJson = req.body?.reportJson ?? req.body ?? {};
+
+    const updated = await prisma.ncr.update({
+      where: { id },
+      data: { reportJson }
+    });
+
+    res.json({ ok: true, id: updated.id, updatedAt: updated.updatedAt });
   } catch (e) {
     next(e);
   }
