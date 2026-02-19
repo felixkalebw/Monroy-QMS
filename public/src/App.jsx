@@ -3,6 +3,8 @@ import { Routes, Route, Link } from "react-router-dom";
 import LoginPage from "./pages/LoginPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import VerifyPage from "./pages/VerifyPage.jsx";
+import NcrStatutoryReport from "./pages/NcrStatutoryReport.jsx";
+
 
 export default function App() {
   return (
