@@ -1,29 +1,31 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+
 import Dashboard from "./Pages/Dashboard.jsx";
 import NcrStatutoryReport from "./Pages/NcrStatutoryReport.jsx";
 
-function DisabledLogin() {
-  return <Navigate to="/dashboard" replace />;
-}
+/*
+  MONROY QMS
+  Clean version – Login fully removed
+  No authentication gate
+  Fully open UI
+*/
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* force root to dashboard */}
+
+        {/* Root → Dashboard */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-        {/* hard-disable login routes */}
-        <Route path="/login" element={<DisabledLogin />} />
-        <Route path="/auth" element={<DisabledLogin />} />
-
-        {/* main pages */}
+        {/* Main Pages */}
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/ncr-report" element={<NcrStatutoryReport />} />
 
-        {/* catch-all */}
+        {/* Catch-all → Dashboard */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
+
       </Routes>
     </BrowserRouter>
   );
