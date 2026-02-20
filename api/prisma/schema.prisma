@@ -213,8 +213,7 @@ model Ncr {
   description String      @map("description")
   status      NcrStatus   @default(OPEN) @map("status")
 
-  // ✅ Store your full NCR statutory report JSON here
-  // NOTE: If your DB column already exists as JSON/JSONB named report_json, this mapping is correct.
+  // Store your full NCR statutory report JSON here
   reportJson  Json        @default("{}") @map("report_json")
 
   createdAt   DateTime    @default(now()) @map("created_at")
