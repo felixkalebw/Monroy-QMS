@@ -1,5 +1,3 @@
-  reportJson Json @default("{}") @map("report_json")
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -103,81 +101,81 @@ enum NcrStatus {
 //////////////////////////////////////////////////////
 
 model User {
-  id                String      @id @map("id")
-  name              String      @map("name")
-  email             String      @unique @map("email")
-  phone             String?     @map("phone")
-  passwordHash      String      @map("password_hash")
-  role              Role        @default(INSPECTOR) @map("role")
-  status            UserStatus  @default(ACTIVE) @map("status")
-  failedLoginCount  Int         @default(0) @map("failed_login_count")
-  lockUntil         DateTime?   @map("lock_until")
-  lastLoginAt       DateTime?   @map("last_login_at")
-  lastLoginIp       String?     @map("last_login_ip")
-  clientId          String?     @map("client_id")
+  id               String     @id @map("id")
+  name             String     @map("name")
+  email            String     @unique @map("email")
+  phone            String?    @map("phone")
+  passwordHash     String     @map("password_hash")
+  role             Role       @default(INSPECTOR) @map("role")
+  status           UserStatus @default(ACTIVE) @map("status")
+  failedLoginCount Int        @default(0) @map("failed_login_count")
+  lockUntil        DateTime?  @map("lock_until")
+  lastLoginAt      DateTime?  @map("last_login_at")
+  lastLoginIp      String?    @map("last_login_ip")
+  clientId         String?    @map("client_id")
 
-  createdAt         DateTime    @default(now()) @map("created_at")
-  updatedAt         DateTime    @updatedAt @map("updated_at")
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
 
   @@map("users")
 }
 
 model Client {
-  id        String        @id @map("id")
-  name      String        @map("name")
+  id        String         @id @map("id")
+  name      String         @map("name")
   category  ClientCategory @map("category")
   status    ClientStatus   @default(ACTIVE) @map("status")
-  notes     String?       @map("notes")
+  notes     String?        @map("notes")
 
-  createdAt DateTime      @default(now()) @map("created_at")
-  updatedAt DateTime      @updatedAt @map("updated_at")
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
 
   @@map("clients")
 }
 
 model Equipment {
-  id               String        @id @map("id")
-  clientId         String        @map("client_id")
-  equipmentCode    String        @unique @map("equipment_code")
-  type             EquipmentType @map("type")
-  serialNumber     String        @map("serial_number")
+  id                String        @id @map("id")
+  clientId          String        @map("client_id")
+  equipmentCode     String        @unique @map("equipment_code")
+  type              EquipmentType @map("type")
+  serialNumber      String        @map("serial_number")
 
-  manufacturer     String?       @map("manufacturer")
-  yearOfManufacture Int?         @map("year_of_manufacture")
-  countryOfOrigin  String?       @map("country_of_origin")
+  manufacturer      String?       @map("manufacturer")
+  yearOfManufacture Int?          @map("year_of_manufacture")
+  countryOfOrigin   String?       @map("country_of_origin")
 
-  swl              Float?        @map("swl")
-  mawp             Float?        @map("mawp")
-  designPressure   Float?        @map("design_pressure")
-  testPressure     Float?        @map("test_pressure")
+  swl               Float?        @map("swl")
+  mawp              Float?        @map("mawp")
+  designPressure    Float?        @map("design_pressure")
+  testPressure      Float?        @map("test_pressure")
 
-  status           String        @default("ACTIVE") @map("status")
-  intervalDays     Int?          @map("interval_days")
-  nextDueDate      DateTime?     @map("next_due_date")
-  lastInspectedAt  DateTime?     @map("last_inspected_at")
+  status            String        @default("ACTIVE") @map("status")
+  intervalDays      Int?          @map("interval_days")
+  nextDueDate       DateTime?     @map("next_due_date")
+  lastInspectedAt   DateTime?     @map("last_inspected_at")
 
-  createdAt        DateTime      @default(now()) @map("created_at")
-  updatedAt        DateTime      @updatedAt @map("updated_at")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
 
   @@map("equipment")
 }
 
 model Inspection {
-  id                   String      @id @map("id")
-  inspectionCode       String      @unique @map("inspection_code")
-  equipmentId          String      @map("equipment_id")
-  clientId             String      @map("client_id")
-  inspectorId          String      @map("inspector_id")
-  type                 String      @map("type")
-  datePerformed        DateTime    @map("date_performed")
-  findingsText         String?     @map("findings_text")
-  nonConformance       Boolean     @default(false) @map("non_conformance")
-  certificateIssued    Boolean     @default(false) @map("certificate_issued")
-  certificateExpiryDate DateTime?  @map("certificate_expiry_date")
-  status               InspectionStatus @default(DRAFT) @map("status")
+  id                    String           @id @map("id")
+  inspectionCode        String           @unique @map("inspection_code")
+  equipmentId           String           @map("equipment_id")
+  clientId              String           @map("client_id")
+  inspectorId           String           @map("inspector_id")
+  type                  String           @map("type")
+  datePerformed         DateTime         @map("date_performed")
+  findingsText          String?          @map("findings_text")
+  nonConformance        Boolean          @default(false) @map("non_conformance")
+  certificateIssued     Boolean          @default(false) @map("certificate_issued")
+  certificateExpiryDate DateTime?        @map("certificate_expiry_date")
+  status                InspectionStatus @default(DRAFT) @map("status")
 
-  createdAt            DateTime    @default(now()) @map("created_at")
-  updatedAt            DateTime    @updatedAt @map("updated_at")
+  createdAt             DateTime         @default(now()) @map("created_at")
+  updatedAt             DateTime         @updatedAt @map("updated_at")
 
   @@map("inspections")
 }
@@ -214,6 +212,10 @@ model Ncr {
   category    NcrCategory @map("category")
   description String      @map("description")
   status      NcrStatus   @default(OPEN) @map("status")
+
+  // ✅ Store your full NCR statutory report JSON here
+  // NOTE: If your DB column already exists as JSON/JSONB named report_json, this mapping is correct.
+  reportJson  Json        @default("{}") @map("report_json")
 
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
